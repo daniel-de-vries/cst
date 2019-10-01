@@ -104,7 +104,7 @@ def cst(
 
     # Compute Class and Shape functions
     _class = cls(psi, n1, n2)
-    _shape = sum(a[r] * bernstein(psi, r, n) for r in range(n))
+    _shape = sum(a[r] * bernstein(psi, r, n) for r in range(len(a)))
 
     # Compute normalized coordinates coordinates and return de-normalized coordinates
     eta = _class * _shape + ((1.0 - psi) * delta[0] + psi * delta[1]) / c
