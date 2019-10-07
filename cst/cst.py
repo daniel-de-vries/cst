@@ -29,7 +29,7 @@ def cls(
     It is assumed all points in psi are between 0 and 1.
     """
     c = (psi ** n1) * ((1.0 - psi) ** n2)
-    c /= 1. if not norm else (((n1 / (n1 + n2)) ** n1) * ((n2 / (n1 + n2)) ** n2))
+    c /= 1. if not norm or n1 == n2 == 0 else (((n1 / (n1 + n2)) ** n1) * ((n2 / (n1 + n2)) ** n2))
     return c
 
 
