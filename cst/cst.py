@@ -1,14 +1,50 @@
 import numpy as np
 import scipy.optimize as opt
 
+from scipy.interpolate import InterpolatedUnivariateSpline
 from scipy.special import binom
 from typing import Union, List, Tuple, Optional
+
+
+def normalize(
+    x: Union[List[float], np.ndarray],
+    x0: Optional[float] = None,
+    dx: Optional[float] = None,
+) -> (np.ndarray, float, float):
+    """
+    Normalize a set of values according to psi = (x - x0) / dx.
+
+    If the reference offset value and scaling factor, x0 and dx, are not given,
+    they will be computed according to x0 = x[0] and dx = x[-1] - x[0].
+
+    Parameters
+    ----------
+    x : array_like
+        List of values
+    x0, dx : float, optional
+        Reference offset value and scaling factor
+
+    Returns
+    -------
+    psi : array_like
+        Normalized list of values
+    x0 : float
+        Reference offset value
+    dx : float
+        Reference scaling factor
+    """
+    if x0 is None:
+        x0 = x[0]
+    if dx is None:
+        dx = x[-1] - x[0]
+    return (np.atleast_1d(x) - x0) / dx, x0, dx
 
 
 def cls(
     psi: Union[float, List[float], np.ndarray], n1: float, n2: float, norm: bool = True
 ) -> np.ndarray:
-    """Compute class function.
+    """
+    Compute class function.
 
     Parameters
     ----------
@@ -29,12 +65,17 @@ def cls(
     It is assumed all points in psi are between 0 and 1.
     """
     c = (psi ** n1) * ((1.0 - psi) ** n2)
-    c /= 1. if not norm or n1 == n2 == 0 else (((n1 / (n1 + n2)) ** n1) * ((n2 / (n1 + n2)) ** n2))
+    c /= (
+        1.0
+        if not norm or n1 == n2 == 0
+        else (((n1 / (n1 + n2)) ** n1) * ((n2 / (n1 + n2)) ** n2))
+    )
     return c
 
 
 def bernstein(psi: Union[float, List[float], np.ndarray], r: int, n: int) -> np.array:
-    """Compute Bernstein basis polynomial.
+    """
+    Compute Bernstein basis polynomial.
 
     Parameters
     ----------
@@ -52,16 +93,17 @@ def bernstein(psi: Union[float, List[float], np.ndarray], r: int, n: int) -> np.
     -----
     It is assumed r <= n.
     """
-    return binom(n, r) * (psi ** r) * (1.0 - psi) ** (n - r)
+    return binom(n, r) * (psi ** r) * ((1.0 - psi) ** (n - r))
 
 
 def cst(
     x: Union[float, List[float], np.ndarray],
     a: Union[List[float], np.ndarray],
-    c: float = 1.0,
     delta: Tuple[float, float] = (0.0, 0.0),
     n1: float = 0.5,
     n2: float = 1.0,
+    x0: Optional[float] = None,
+    dx: Optional[float] = None,
 ) -> np.ndarray:
     """Compute coordinates of a CST-decomposed curve.
 
@@ -77,13 +119,13 @@ def cst(
         X-coordinates.
     a : array_like
         Bernstein coefficients.
-    c : float
-        Scaling length. Default is 1.
     delta : tuple of two floats
         Vertical displacements of the start- and endpoints of the curve. Default is (0., 0.).
     n1, n2 : float
         Class parameters. These determine the general "class" of the shape. They default to n1=0.5 and n2=1.0 for
         airfoil-like shapes.
+    x0, dx : float, optional
+        Reference offset value and scaling factor for the x-coordinates
 
     Returns
     -------
@@ -98,17 +140,19 @@ def cst(
     # Ensure x is a numpy array
     x = np.atleast_1d(x)
 
-    # Non-dimensional x-coordinates and Bernstein polynomial degree
-    psi = x / c
+    # Non-dimensional x-coordinates
+    psi, x0, dx = normalize(x, x0, dx)
+
+    # Bernstein polynomial degree
     n = len(a) - 1
 
     # Compute Class and Shape functions
     _class = cls(psi, n1, n2)
     _shape = sum(a[r] * bernstein(psi, r, n) for r in range(len(a)))
 
-    # Compute normalized coordinates coordinates and return de-normalized coordinates
-    eta = _class * _shape + ((1.0 - psi) * delta[0] + psi * delta[1]) / c
-    return c * eta
+    # Compute y-coordinates
+    y = _class * _shape + (1.0 - psi) * delta[0] + psi * delta[1]
+    return y
 
 
 def fit(
@@ -118,6 +162,8 @@ def fit(
     delta: Optional[Tuple[float, float]] = None,
     n1: float = 0.5,
     n2: float = 1.0,
+    x0: Optional[float] = None,
+    dx: Optional[float] = None,
 ) -> Tuple[np.ndarray, Tuple[float, float]]:
     """Fit a set of coordinates to a CST representation.
 
@@ -131,6 +177,8 @@ def fit(
         Manually set the start- and endpoint displacements.
     n1, n2 : float
         Class parameters. Default values are 0.5 and 1.0 respectively.
+    x0, dx : float, optional
+        Reference offset value and scaling factor for the x-coordinates
 
     Returns
     -------
@@ -139,11 +187,12 @@ def fit(
     delta : tuple of floats
         Displacements of the start- and endpoints of the curve.
     """
+    if delta is not None and (x0 is not None or dx is not None):
+        raise UserWarning("It is not recommended to specify both delta and x0/dx.")
+
     # Ensure x and y are np.ndarrays
-    if type(x) != np.ndarray:
-        x = np.array(x)
-    if type(y) != np.ndarray:
-        y = np.ndarray(y)
+    x = np.atleast_1d(x)
+    y = np.atleast_1d(y)
 
     # Make sure the coordinates are sorted by x-coordinate
     ind = np.argsort(x)
@@ -151,17 +200,23 @@ def fit(
     y = y[ind]
 
     # Non-dimensionalize coordinates
-    c = x[-1] - x[0]
-    x = x / c
-    y = y / c
+    psi, x0, dx = normalize(x, x0, dx)
 
     if delta is None:
-        delta = (y[0], y[-1])
+        if x0 < x[0] or x0 + dx > x[-1]:
+            f = InterpolatedUnivariateSpline(x, y)
+            delta = (f(x0), f(x0 + dx))
+        elif x0 > x[0]:
+            raise ValueError("x0 should always be <= x[0]")
+        elif x0 + dx < x[-1]:
+            raise ValueError("x0 + dx should always be >= x[-1]")
+        else:
+            delta = (y[0], y[-1])
 
-    def f(_x):
-        return np.sqrt(np.mean((y - cst(x, _x, delta=delta, n1=n1, n2=n2)) ** 2))
+    def f(_a):
+        return np.sqrt(np.mean((y - cst(psi, _a, delta=delta, n1=n1, n2=n2)) ** 2))
 
     # Fit the curve
     res = opt.minimize(f, np.zeros(n))
 
-    return res.x, (y[0] * c, y[-1] * c)
+    return res.x, delta
