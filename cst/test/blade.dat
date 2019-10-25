@@ -1,3 +1,5 @@
+# NACA 5868-9 Propeller Blade
+# Blade angle, b=0 deg at 0.75R
 #   r/R     c/R     t/c  b[rad]
  0.2000  0.0763  0.7747  0.3652
  0.2250  0.0825  0.6538  0.3470
