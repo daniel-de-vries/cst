@@ -75,9 +75,9 @@ class TestCSTPropeller(unittest.TestCase):
     """
 
     def setUp(self) -> None:
-        self.geom = np.loadtxt("propeller.dat")
+        self.geom = np.loadtxt("blade.dat")
 
-    @parameterized.expand([("n=3", 3, 0), ("n=6", 6, 2), ("n=12", 12, 3)])
+    @parameterized.expand([("n=3", 3, 0), ("n=6", 6, 1), ("n=12", 12, 2)])
     def test(self, _, n, precision):
         for i in range(1, 4):
             a, _ = fit(self.geom[:, 0], self.geom[:, i], n, n1=0, n2=0, delta=(0, 0))
