@@ -29,40 +29,18 @@ class TestCSTParabola(unittest.TestCase):
     Set of tests based on fitting a parabola with the CST.
     """
 
-    params = [
-        (f"n={param[0]},delta {'computed' if param[0] is None else 'fixed'}",) + param
-        for param in itertools.product((3, 6, 12), ((0, 0), None), (6,))
-    ]
-
     def setUp(self) -> None:
-        self.x = np.linspace(-1, 1)
+        self.x = np.linspace(0, 1)
         self.y = self.x * self.x
 
     def rms(self, y_fit):
         e = y_fit - self.y
         return rms(e)
 
-    def test_cst_analytical(self):
-        """
-        A simple analytical test with known CST coefficients and displacements.
-        """
-        y_fit = cst(self.x, np.array([0, -2, 0]), n1=0, n2=0, delta=(1, 1))
-        self.assertAlmostEqual(self.rms(y_fit), 0.0)
-
-    def test_fit_analytical(self):
-        """
-        A simple analytical test with known CST coefficients and displacements.
-        """
-        a, delta = fit(self.x, self.y, 3, n1=0, n2=0)
-
-        self.assertAlmostEqual(a[0], 0)
-        self.assertAlmostEqual(a[1], -2)
-        self.assertAlmostEqual(a[2], 0)
-
-        self.assertAlmostEqual(delta[0], 1)
-        self.assertAlmostEqual(delta[1], 1)
-
-    @parameterized.expand(params)
+    @parameterized.expand([
+        (f"n={param[0]},delta {'computed' if param[0] is None else 'fixed'}",) + param
+        for param in itertools.product((3, 6, 12), ((0, 0), None), (6,))
+    ])
     def test(self, _, n, delta, precision):
         a, delta = fit(self.x, self.y, n, delta=delta, n1=0, n2=0)
         y_fit = cst(self.x, a, delta=delta, n1=0, n2=0)
@@ -75,15 +53,16 @@ class TestCSTPropeller(unittest.TestCase):
     """
 
     def setUp(self) -> None:
-        self.geom = np.loadtxt("blade.dat")
+        self.geom = np.loadtxt("nr640_blade.dat")
 
-    @parameterized.expand([("n=3", 3, 0), ("n=6", 6, 2), ("n=12", 12, 3)])
+    @parameterized.expand([("n=3", 3, 0.25), ("n=6", 6, 0.02), ("n=12", 12, 0.002)])
     def test(self, _, n, precision):
         for i in range(1, 4):
             a, _ = fit(self.geom[:, 0], self.geom[:, i], n, n1=0, n2=0, delta=(0, 0))
             y_fit = cst(self.geom[:, 0], a, n1=0, n2=0)
-            e = y_fit - self.geom[:, i]
-            self.assertAlmostEqual(rms(e), 0.0, precision)
+            e = (y_fit - self.geom[:, i]) / np.mean(self.geom[:, i])
+
+            self.assertLess(rms(e), precision)
 
 
 class TestCSTAirfoil(unittest.TestCase):
@@ -101,13 +80,14 @@ class TestCSTAirfoil(unittest.TestCase):
         self.y_u = np.interp(self.x, coords_upper[:, 0], coords_upper[:, 1])
         self.y_l = np.interp(self.x, coords_lower[:, 0], coords_lower[:, 1])
 
-    @parameterized.expand([("n=3", 3, 2), ("n=6", 6, 2), ("n=12", 12, 3)])
+    @parameterized.expand([("n=3", 3, 0.002), ("n=6", 6, 0.002), ("n=12", 12, 0.002)])
     def test(self, _, n, precision):
         for y in [self.y_u, self.y_l]:
-            a, (_, d_te) = fit(self.x, y, n, x0=0, dx=1)
-            y_fit = cst(self.x, a, delta=(0, d_te), x0=0, dx=1)
+            a, (_, d_te) = fit(self.x, y, n)
+            y_fit = cst(self.x, a, delta=(0, d_te))
             e = y_fit - y
-            self.assertAlmostEqual(rms(e), 0.0, precision)
+
+            self.assertLess(rms(e), precision)
 
 
 if __name__ == "__main__":
